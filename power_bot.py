@@ -25,8 +25,8 @@ CHAT_ID = os.getenv("CHAT_ID")  # ID девушки
 # Адреса для проверки
 # ========================
 ADDRESSES = [
-    {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "10"},
-    {"city": "Київ", "street": "Хрещатик", "house": "5"},
+    {"city": "смт. Чернівець (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "37"},
+    {"city": "м.. Могилів-Подільський (Вінницька Область/М.Вінниця)", "street": "вулиця Коцюбинського", "house": "48"},
 ]
 
 # ========================
@@ -42,29 +42,28 @@ def get_screenshot(city, street, house, filename):
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.get("https://voe.com.ua/disconnection/detailed")
-    wait = WebDriverWait(driver, 60)  # увеличили время ожидания
 
-    # Ищем поля по data-drupal-selector
-    city_input = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-city']"))
-    )
-    street_input = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-street']"))
-    )
-    house_input = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-house']"))
-    )
+    wait = WebDriverWait(driver, 120)  # увеличили таймаут до 120 секунд
 
-    # Вводим данные
+    # Ждём форму целиком
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "form#disconnection-detailed-form")))
+    form = driver.find_element(By.CSS_SELECTOR, "form#disconnection-detailed-form")
+
+    # Находим поля внутри формы
+    city_input = form.find_element(By.CSS_SELECTOR, "input[data-drupal-selector='edit-city']")
+    street_input = form.find_element(By.CSS_SELECTOR, "input[data-drupal-selector='edit-street']")
+    house_input = form.find_element(By.CSS_SELECTOR, "input[data-drupal-selector='edit-house']")
+
+    # Вводим данные с небольшими паузами
     city_input.clear()
     city_input.send_keys(city)
-    time.sleep(1)
+    time.sleep(2)
     city_input.send_keys(Keys.ARROW_DOWN)
     city_input.send_keys(Keys.RETURN)
 
     street_input.clear()
     street_input.send_keys(street)
-    time.sleep(1)
+    time.sleep(2)
     street_input.send_keys(Keys.ARROW_DOWN)
     street_input.send_keys(Keys.RETURN)
 
@@ -73,7 +72,7 @@ def get_screenshot(city, street, house, filename):
     time.sleep(1)
     house_input.send_keys(Keys.RETURN)
 
-    # Ждем загрузки результатов
+    # Ждём загрузки результатов
     time.sleep(6)
     driver.save_screenshot(filename)
     driver.quit()
@@ -105,16 +104,17 @@ async def main():
             with open(hashfile, "r") as f:
                 old_hash = f.read()
 
-        # Если изменилось — отправляем фото
-        if new_hash != old_hash:
-            photo = FSInputFile(filename)
-            await bot.send_photo(
-                chat_id=CHAT_ID,
-                photo=photo,
-                caption=f"⚡ Обновление графика\n📍 {addr['city']} {addr['street']} {addr['house']}"
-            )
-            with open(hashfile, "w") as f:
-                f.write(new_hash)
+        # Отправляем фото сразу после запуска
+        photo = FSInputFile(filename)
+        await bot.send_photo(
+            chat_id=CHAT_ID,
+            photo=photo,
+            caption=f"⚡ График для {addr['city']} {addr['street']} {addr['house']}"
+        )
+
+        # Сохраняем hash, чтобы при следующих запусках проверять изменения
+        with open(hashfile, "w") as f:
+            f.write(new_hash)
 
         os.remove(filename)
 
@@ -125,8 +125,3 @@ async def main():
 # ========================
 if __name__ == "__main__":
     asyncio.run(main())
-
-ADDRESSES = [
-    {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "37"},
-    {"city": "м.. Могилів-Подільський (Вінницька Область/М.Вінниця)", "street": "вулиця Коцюбинського", "house": "48"},
-]

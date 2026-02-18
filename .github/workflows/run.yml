@@ -1,8 +1,9 @@
 name: PowerBot
 
+# Запуск по расписанию и вручную
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/30 * * * *"  # каждые 30 минут
   workflow_dispatch:
 
 jobs:
@@ -10,22 +11,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Клонируем репозиторий
       - uses: actions/checkout@v3
 
+      # 2️⃣ Устанавливаем Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
+      # 3️⃣ Устанавливаем Chrome (для Selenium)
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
 
+      # 4️⃣ Устанавливаем зависимости Python
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
           pip install aiogram selenium webdriver-manager
 
-      - name: Run bot
+      # 5️⃣ Запуск скрипта
+      - name: Run PowerBot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
