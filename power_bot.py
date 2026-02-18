@@ -7,25 +7,43 @@ import imgkit
 from aiogram import Bot
 from aiogram.types import FSInputFile
 
+# ========================
+# Настройки Telegram
+# ========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")  # ID девушки
 
+# ========================
 # Адреса для проверки
+# ========================
 ADDRESSES = [
     {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "37"},
     {"city": "м.. Могилів-Подільський (Вінницька Область/М.Вінниця)", "street": "вулиця Коцюбинського", "house": "48"},
 ]
 
-# Функция для получения данных графика с сайта
+# ========================
+# Функция для получения HTML с сайта
+# ========================
 def get_data(city, street, house):
     url = "https://voe.com.ua/disconnection/detailed"
     session = requests.Session()
 
-    # Получаем csrf-token и cookies
-    r = session.get(url)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/115.0.0.0 Safari/537.36"
+    }
+
+    # GET-запрос для получения csrf_token и cookies
+    r = session.get(url, headers=headers)
+
+    if 'name="csrf_token"' not in r.text:
+        print("Не удалось найти csrf_token. Возвращаем пустую страницу.")
+        return "<html><body><h1>Ошибка получения данных</h1></body></html>"
+
     csrf_token = r.text.split('name="csrf_token" value="')[1].split('"')[0]
 
-    # Отправляем POST-запрос
+    # POST-запрос для получения таблицы графика
     payload = {
         "city": city,
         "street": street,
@@ -33,11 +51,13 @@ def get_data(city, street, house):
         "csrf_token": csrf_token,
         "op": "Пошук"
     }
-    headers = {"Referer": url}
-    resp = session.post(url, data=payload, headers=headers)
-    return resp.text  # возвращаем HTML с таблицей графика
 
-# Функция для генерации скриншота таблицы через imgkit
+    resp = session.post(url, data=payload, headers=headers)
+    return resp.text
+
+# ========================
+# Генерация скриншота HTML
+# ========================
 def html_to_image(html, filename):
     options = {
         "format": "png",
@@ -46,12 +66,16 @@ def html_to_image(html, filename):
     }
     imgkit.from_string(html, filename, options=options)
 
-# Функция для вычисления hash
+# ========================
+# Вычисление hash для проверки изменений
+# ========================
 def get_hash(filename):
     with open(filename, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
+# ========================
 # Главная асинхронная функция
+# ========================
 async def main():
     bot = Bot(token=BOT_TOKEN)
 
@@ -68,7 +92,7 @@ async def main():
             with open(hashfile, "r") as f:
                 old_hash = f.read()
 
-        # Если изменилось — отправляем в Telegram
+        # Отправка в Telegram только если график изменился
         if new_hash != old_hash:
             photo = FSInputFile(filename)
             await bot.send_photo(
@@ -79,10 +103,13 @@ async def main():
             with open(hashfile, "w") as f:
                 f.write(new_hash)
 
+        # Удаляем скриншот, чтобы не засорять репозиторий
         os.remove(filename)
 
     await bot.session.close()
 
+# ========================
+# Запуск
+# ========================
 if __name__ == "__main__":
     asyncio.run(main())
-
