@@ -1,11 +1,19 @@
 import os
-import requests
+import time
 import hashlib
 import asyncio
-import imgkit
 
 from aiogram import Bot
 from aiogram.types import FSInputFile
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 # ========================
 # Настройки Telegram
@@ -17,54 +25,58 @@ CHAT_ID = os.getenv("CHAT_ID")  # ID девушки
 # Адреса для проверки
 # ========================
 ADDRESSES = [
-    {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "37"},
-    {"city": "м.. Могилів-Подільський (Вінницька Область/М.Вінниця)", "street": "вулиця Коцюбинського", "house": "48"},
+    {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "10"},
+    {"city": "Київ", "street": "Хрещатик", "house": "5"},
 ]
 
 # ========================
-# Функция для получения HTML с сайта
+# Функция для скриншота страницы с графиком
 # ========================
-def get_data(city, street, house):
-    url = "https://voe.com.ua/disconnection/detailed"
-    session = requests.Session()
+def get_screenshot(city, street, house, filename):
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,2200")
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/115.0.0.0 Safari/537.36"
-    }
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver.get("https://voe.com.ua/disconnection/detailed")
+    wait = WebDriverWait(driver, 60)  # увеличили время ожидания
 
-    # GET-запрос для получения csrf_token и cookies
-    r = session.get(url, headers=headers)
+    # Ищем поля по data-drupal-selector
+    city_input = wait.until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-city']"))
+    )
+    street_input = wait.until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-street']"))
+    )
+    house_input = wait.until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "input[data-drupal-selector='edit-house']"))
+    )
 
-    if 'name="csrf_token"' not in r.text:
-        print("Не удалось найти csrf_token. Возвращаем пустую страницу.")
-        return "<html><body><h1>Ошибка получения данных</h1></body></html>"
+    # Вводим данные
+    city_input.clear()
+    city_input.send_keys(city)
+    time.sleep(1)
+    city_input.send_keys(Keys.ARROW_DOWN)
+    city_input.send_keys(Keys.RETURN)
 
-    csrf_token = r.text.split('name="csrf_token" value="')[1].split('"')[0]
+    street_input.clear()
+    street_input.send_keys(street)
+    time.sleep(1)
+    street_input.send_keys(Keys.ARROW_DOWN)
+    street_input.send_keys(Keys.RETURN)
 
-    # POST-запрос для получения таблицы графика
-    payload = {
-        "city": city,
-        "street": street,
-        "house": house,
-        "csrf_token": csrf_token,
-        "op": "Пошук"
-    }
+    house_input.clear()
+    house_input.send_keys(house)
+    time.sleep(1)
+    house_input.send_keys(Keys.RETURN)
 
-    resp = session.post(url, data=payload, headers=headers)
-    return resp.text
-
-# ========================
-# Генерация скриншота HTML
-# ========================
-def html_to_image(html, filename):
-    options = {
-        "format": "png",
-        "width": 1000,
-        "encoding": "UTF-8",
-    }
-    imgkit.from_string(html, filename, options=options)
+    # Ждем загрузки результатов
+    time.sleep(6)
+    driver.save_screenshot(filename)
+    driver.quit()
 
 # ========================
 # Вычисление hash для проверки изменений
@@ -83,16 +95,17 @@ async def main():
         filename = f"result_{i}.png"
         hashfile = f"hash_{i}.txt"
 
-        html = get_data(addr["city"], addr["street"], addr["house"])
-        html_to_image(html, filename)
-        new_hash = get_hash(filename)
+        # Делаем скриншот
+        get_screenshot(addr["city"], addr["street"], addr["house"], filename)
 
+        # Проверяем изменения
+        new_hash = get_hash(filename)
         old_hash = None
         if os.path.exists(hashfile):
             with open(hashfile, "r") as f:
                 old_hash = f.read()
 
-        # Отправка в Telegram только если график изменился
+        # Если изменилось — отправляем фото
         if new_hash != old_hash:
             photo = FSInputFile(filename)
             await bot.send_photo(
@@ -103,7 +116,6 @@ async def main():
             with open(hashfile, "w") as f:
                 f.write(new_hash)
 
-        # Удаляем скриншот, чтобы не засорять репозиторий
         os.remove(filename)
 
     await bot.session.close()
@@ -113,3 +125,8 @@ async def main():
 # ========================
 if __name__ == "__main__":
     asyncio.run(main())
+
+ADDRESSES = [
+    {"city": "смт. Чернівці (Чернівецький Район/Смт Чернівці)", "street": "вулиця Павлівська", "house": "37"},
+    {"city": "м.. Могилів-Подільський (Вінницька Область/М.Вінниця)", "street": "вулиця Коцюбинського", "house": "48"},
+]
